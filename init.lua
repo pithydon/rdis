@@ -229,40 +229,43 @@ minetest.register_node("rdis:stall_ghost", {
 	end
 })
 
+local globalstep_next = function(v, meta, objs, to_pos)
+	local node = minetest.get_node(v)
+	local face
+	local to_face
+	if node.name == "rdis:stall" then
+		local meta = minetest.get_meta(to_pos)
+		face = node.param2
+		to_face = meta:get_int("face")
+	else
+		local node = minetest.get_node(to_pos)
+		face = meta:get_int("face")
+		to_face = node.param2
+	end
+	local yaw_diff = 0 - ((1.5708 * to_face) - (1.5708 * face)) - 4.7124
+	for _,v in ipairs(objs) do
+		if v:is_player() then
+			local name = v:get_player_name()
+			if not contains(on_hold, name) then
+				local yaw = v:get_look_yaw()
+				table.insert(on_hold, name)
+				v:setpos(to_pos)
+				v:set_look_yaw(yaw + yaw_diff)
+				minetest.after(1.3, remove_name, name)
+			end
+		end
+	end
+end
+
 minetest.register_globalstep(function(dtime)
 	for _,v in ipairs(tplist) do
 		local meta = minetest.get_meta(v)
 		local to_pos = minetest.string_to_pos(meta:get_string("to_pos"))
 		if to_pos then
-			local node = minetest.get_node(v)
-			local face
-			local to_face
-			local yaw_diff
 			local objs = minetest.get_objects_inside_radius(v, 0.7)
 			if objs[1] then
-				if node.name == "rdis:stall" then
-					local meta = minetest.get_meta(to_pos)
-					face = node.param2
-					to_face = meta:get_int("face")
-				else
-					minetest.emerge_area(to_pos, to_pos)
-					local node = minetest.get_node(to_pos)
-					face = meta:get_int("face")
-					to_face = node.param2
-				end
-				yaw_diff = 0 - ((1.5708 * to_face) - (1.5708 * face)) - 4.7124
-			end
-			for _,v in ipairs(objs) do
-				if v:is_player() then
-					local name = v:get_player_name()
-					if not contains(on_hold, name) then
-						local yaw = v:get_look_yaw()
-						table.insert(on_hold, name)
-						v:setpos(to_pos)
-						v:set_look_yaw(yaw + yaw_diff)
-						minetest.after(1.3, remove_name, name)
-					end
-				end
+				minetest.emerge_area(to_pos, to_pos)
+				minetest.after(0.1, globalstep_next, v, meta, objs, to_pos)
 			end
 		end
 	end
