@@ -63,7 +63,7 @@ minetest.register_node("rdis:control_panel", {
 			local door = minetest.string_to_pos(meta:get_string("door"))
 			local pos_string = minetest.pos_to_string(pos)
 			if door then
-				minetest.show_formspec(name, "rdis:set_pos_s_"..pos_string, "field[text;x,y,z:facedir;]")
+				minetest.show_formspec(name, "rdis:set_pos_s_"..pos_string, "field[text;x,y,z:facedir    Enter \"help\" without quotes for more info.;]")
 			else
 				minetest.show_formspec(name, "rdis:set_door_s_"..pos_string, "field[text;place door at;]")
 			end
@@ -146,8 +146,26 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 				end
 			end
 		else
-			if fields.text == "close" then
-				local panel_meta = minetest.get_meta(pos)
+			local panel_meta = minetest.get_meta(pos)
+			local fields_text = fields.text:split(" ")
+			if fields_text[1] == "help" then
+				if fields_text[2] == "close" then
+					minetest.chat_send_player(name, "RDIS command \"close\", closes the portal.")
+				elseif fields_text[2] == "open" then
+					minetest.chat_send_player(name, "RDIS command \"open\", opens a bookmark. usage: open \"bookmark name\"")
+				elseif fields_text[2] == "bookmark" then
+					minetest.chat_send_player(name, "RDIS command \"bookmark\", bookmarks a position. usage: bookmark \"bookmark name\" \"position\"")
+				elseif fields_text[2] == "delete" then
+					minetest.chat_send_player(name, "RDIS command \"delete\", deletes a bookmark. usage: delete \"bookmark name\"")
+				elseif fields_text[2] == "list" then
+					minetest.chat_send_player(name, "RDIS command \"list\", lists all bookmarks.")
+				else
+					minetest.chat_send_player(name, "Enter a position or use a command.\n"..
+							"Position format is \"x,y,z:facedir\" without quotes.\n"..
+							"Available commands are: close open bookmark delete list.\n"..
+							"Use \"help \"command name\"\" to for more info on commands.")
+				end
+			elseif fields.text == "close" then
 				local old_to_pos = minetest.string_to_pos(panel_meta:get_string("to_pos"))
 				if old_to_pos then
 					local door = minetest.string_to_pos(panel_meta:get_string("door"))
@@ -157,6 +175,53 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 					remove_tp(old_to_pos)
 					minetest.remove_node(old_to_pos)
 				end
+			elseif fields_text[1] == "open" then
+				if not fields_text[2] then
+					minetest.chat_send_player(name, "Can NOT open null.")
+					return true
+				end
+				local bookmark = panel_meta:get_string("bookmark_"..fields_text[2])
+				local place_pos_string = bookmark:split(":")[1]
+				local place_pos = minetest.string_to_pos(place_pos_string)
+				local facedir = tonumber(bookmark:split(":")[2])
+				if place_pos and facedir and facedir >= 0 and facedir <= 3 then
+					if not minetest.is_protected(place_pos, name) and not minetest.is_protected({x = place_pos.x, y = place_pos.y + 1, z = place_pos.z}, name) then
+						minetest.emerge_area(place_pos, {x = place_pos.x, y = place_pos.y + 1, z = place_pos.z})
+						minetest.after(0.01, materialize, name, pos, place_pos_string, place_pos, facedir)
+					else
+						minetest.chat_send_player(name, "Could not materialize at "..place_pos_string..". Protection field found.")
+					end
+				else
+					minetest.chat_send_player(name, "Bookmark not found.")
+				end
+			elseif fields_text[1] == "bookmark" then
+				if not fields_text[2] then
+					minetest.chat_send_player(name, "Bookmarked null island.")
+					return true
+				elseif not fields_text[3] then
+					minetest.chat_send_player(name, "Bookmarked null island as "..fields_text[2]..".")
+					return true
+				end
+				panel_meta:set_string("bookmark_"..fields_text[2], fields_text[3])
+			elseif fields_text[1] == "delete" then
+				if not fields_text[2] then
+					minetest.chat_send_player(name, "Deleted null island.")
+					return true
+				end
+				panel_meta:set_string("bookmark_"..fields_text[2], "")
+			elseif fields_text[1] == "list" then
+				local meta_table = panel_meta:to_table()
+				local bookmarks_table = {}
+				for k,v in pairs(meta_table.fields) do
+					if k:split("_")[1] == "bookmark" then
+						table.insert(bookmarks_table, k:split("_")[2])
+					end
+				end
+				local bookmarks = "RDIS bookmarks:"
+				for _,v in ipairs(bookmarks_table) do
+					bookmarks = bookmarks.." "..v
+				end
+				minetest.chat_send_player(name, bookmarks)
 			else
 				local place_pos_string = fields.text:split(":")[1]
 				local place_pos = minetest.string_to_pos(place_pos_string)
