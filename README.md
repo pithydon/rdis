@@ -1,8 +1,8 @@
-rdis by pithydon
+rdis by pithydon (2016)
 
 Yet another teleport mod.
 
-Forum: https://forum.minetest.net/viewtopic.php?f=11&t=15170
+Forum: https://forum.minetest.net/viewtopic.php?t=15170
 
 Github: https://github.com/pithydon/rdis
 

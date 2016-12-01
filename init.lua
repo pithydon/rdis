@@ -1,3 +1,61 @@
+local mesecons_mvps_path = minetest.get_modpath("mesecons_mvps")
+
+local rdis_boxes = {}
+
+local file = io.open(minetest.get_modpath("rdis").."/rdis_boxes.txt", "r")
+if file ~= nil then
+	local list_string = file:read("*a")
+	file:close()
+	local list = list_string:split("\n")
+	for _,v in ipairs(list) do
+		local vt = v:split(":")
+		local vn = vt[2]:gsub(" ", "_")
+		local subname = string.lower(vn)
+
+		minetest.register_node("rdis:box_"..subname, {
+			description = "rdis box: "..vt[2],
+			drawtype = "mesh",
+			tiles = {vt[1]},
+			paramtype = "light",
+			paramtype2 = "facedir",
+			mesh = "rdis_box.obj",
+			collision_box = {
+				type = "fixed",
+				fixed = {
+					{-0.5, -0.5, -0.5, 0.5, -0.4375, 0.5},
+					{-0.5, 1.4375, -0.5, 0.5, 1.5, 0.5},
+					{-0.5, -0.4375, 0.4375, 0.5, 1.4375, 0.5},
+					{-0.5, -0.4375, -0.5, -0.4375, 1.4375, 0.4375},
+					{0.4375, -0.4375, -0.5, 0.5, 1.4375, 0.4375}
+				}
+			},
+			selection_box = {
+				type = "fixed",
+				fixed = {-0.5, -0.5, -0.5, 0.5, 1.5, 0.5}
+			},
+			groups = {rdis_box = 1, not_in_creative_inventory = 1},
+			diggable = false,
+			on_construct = function(pos)
+				minetest.swap_node({x = pos.x, y = pos.y + 1, z = pos.z}, {name = "rdis:stall_ghost"})
+			end,
+			on_destruct = function(pos)
+				minetest.remove_node({x = pos.x, y = pos.y + 1, z = pos.z})
+			end,
+			on_blast = function(pos, intensity)
+			end
+		})
+
+		table.insert(rdis_boxes, {"rdis:box_"..subname, "[combine:22x30:-58,-32="..vt[1]})
+
+		if mesecons_mvps_path then
+			mesecon.register_mvps_stopper("rdis:box_"..subname)
+		end
+	end
+else
+	minetest.log("error", minetest.get_modpath("rdis").."/rdis_boxes.txt not found. mod [rdis] will not load")
+	return
+end
+
 local tplist = {}
 
 local on_hold = {}
@@ -40,6 +98,15 @@ local contains = function(t, e)
 	return false
 end
 
+local goodbox = function(box)
+	for _,v in ipairs(rdis_boxes) do
+		if v[1] == box then
+			return true
+		end
+	end
+	return false
+end
+
 minetest.register_node("rdis:control_panel", {
 	description = "RDIS Control Panel",
 	drawtype = "nodebox",
@@ -54,31 +121,45 @@ minetest.register_node("rdis:control_panel", {
 		}
 	},
 	groups = {cracky = 1, level = 1},
+	on_construct = function(pos)
+		local meta = minetest.get_meta(pos)
+		local var = math.random(#rdis_boxes)
+		local box = rdis_boxes[var]
+		meta:set_string("box", box[1])
+	end,
 	on_rightclick = function(pos, node, clicker, itemstack, pointed_thing)
 		local name = clicker:get_player_name()
-		if minetest.is_protected(pos, name) then
-			minetest.chat_send_player(name, "Control panel is locked.")
-		else
-			local meta = minetest.get_meta(pos)
-			local door = minetest.string_to_pos(meta:get_string("door"))
-			local pos_string = minetest.pos_to_string(pos)
-			if door then
-				minetest.show_formspec(name, "rdis:set_pos_s_"..pos_string, "field[text;x,y,z:facedir    Enter \"help\" without quotes for more info.;]")
+		local meta = minetest.get_meta(pos)
+		local door = minetest.string_to_pos(meta:get_string("door"))
+		local pos_string = minetest.pos_to_string(pos)
+		if door then
+			if meta:get_string("locked") ~= "false" and minetest.is_protected(pos, name) then
+				minetest.chat_send_player(name, "Control panel is locked.")
 			else
-				minetest.show_formspec(name, "rdis:set_door_s_"..pos_string, "field[text;place door at;]")
+				minetest.show_formspec(name, "rdis:set_pos_s_"..pos_string,
+						"background[0,0;0,0;rdis_control_panel_gui_bg.png;true]field[text;x,y,z:facedir    Enter \"help\" without quotes for more info.;]")
+			end
+		else
+			if minetest.is_protected(pos, name) then
+				minetest.chat_send_player(name, "Control panel is locked.")
+			else
+				minetest.show_formspec(name, "rdis:set_door_s_"..pos_string,
+						"background[0,0;0,0;rdis_control_panel_gui_bg.png;true]field[text;place door at...;]")
 			end
 		end
 	end,
 	on_destruct = function(pos)
 		local meta = minetest.get_meta(pos)
 		local door = minetest.string_to_pos(meta:get_string("door"))
-		local to_pos = minetest.string_to_pos(meta:get_string("to_pos"))
+		local to_pos_string = meta:get_string("to_pos")
+		local to_pos = minetest.string_to_pos(to_pos_string)
 		if door then
 			remove_tp(door)
 		end
 		if to_pos then
 			remove_tp(to_pos)
 			minetest.remove_node(to_pos)
+			minetest.log("action", "destruction of \"rdis:control_panel\" at "..minetest.pos_to_string(pos).." dematerialized an rdis box at "..to_pos_string)
 		end
 	end
 })
@@ -92,7 +173,7 @@ minetest.register_craft({
 	}
 })
 
-local materialize = function(name, pos, place_pos_string, place_pos, facedir)
+local materialize = function(name, pos, place_pos_string, place_pos, facedir, box)
 	local old_node = minetest.get_node_or_nil(place_pos)
 	local under_node = minetest.get_node_or_nil({x = place_pos.x, y = place_pos.y + 1, z = place_pos.z})
 	if old_node and under_node then
@@ -103,17 +184,20 @@ local materialize = function(name, pos, place_pos_string, place_pos, facedir)
 			local door_string = panel_meta:get_string("door")
 			local door = minetest.string_to_pos(door_string)
 			local door_meta = minetest.get_meta(door)
-			local old_to_pos = minetest.string_to_pos(panel_meta:get_string("to_pos"))
+			local old_to_pos_string = panel_meta:get_string("to_pos")
+			local old_to_pos = minetest.string_to_pos(old_to_pos_string)
 			if old_to_pos then
 				remove_tp(old_to_pos)
 				minetest.remove_node(old_to_pos)
+				minetest.log("action", name.." dematerialized an rdis box at "..old_to_pos_string)
 			end
 			panel_meta:set_string("to_pos", place_pos_string)
 			door_meta:set_string("to_pos", place_pos_string)
-			minetest.set_node(place_pos, {name = "rdis:stall", param2 = facedir})
+			minetest.set_node(place_pos, {name = box, param2 = facedir})
 			local meta = minetest.get_meta(place_pos)
 			meta:set_string("to_pos", door_string)
 			add_tp(place_pos)
+			minetest.log("action", name.." materialized an rdis box at "..place_pos_string)
 		else
 			minetest.chat_send_player(name, "Could not materialize at "..place_pos_string..".")
 		end
@@ -159,14 +243,19 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 					minetest.chat_send_player(name, "RDIS command \"delete\", deletes a bookmark. usage: delete \"bookmark name\"")
 				elseif fields_text[2] == "list" then
 					minetest.chat_send_player(name, "RDIS command \"list\", lists all bookmarks.")
+				elseif fields_text[2] == "lock" then
+					minetest.chat_send_player(name, "RDIS command \"lock\", lockes the control panel. \"Needs a protection field to work.\"")
+				elseif fields_text[2] == "unlock" then
+					minetest.chat_send_player(name, "RDIS command \"unlock\", unlockes the control panel.")
 				else
 					minetest.chat_send_player(name, "Enter a position or use a command.\n"..
 							"Position format is \"x,y,z:facedir\" without quotes.\n"..
-							"Available commands are: close open bookmark delete list.\n"..
+							"Available commands are: close open bookmark delete list lock unlock\n"..
 							"Use \"help \"command name\"\" to for more info on commands.")
 				end
 			elseif fields.text == "close" then
-				local old_to_pos = minetest.string_to_pos(panel_meta:get_string("to_pos"))
+				local old_to_pos_string = panel_meta:get_string("to_pos")
+				local old_to_pos = minetest.string_to_pos(old_to_pos_string)
 				if old_to_pos then
 					local door = minetest.string_to_pos(panel_meta:get_string("door"))
 					local door_meta = minetest.get_meta(door)
@@ -174,6 +263,7 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 					door_meta:set_string("to_pos", "")
 					remove_tp(old_to_pos)
 					minetest.remove_node(old_to_pos)
+					minetest.log("action", name.." dematerialized an rdis box at "..old_to_pos_string)
 				end
 			elseif fields_text[1] == "open" then
 				if not fields_text[2] then
@@ -222,14 +312,29 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 					bookmarks = bookmarks.." "..v
 				end
 				minetest.chat_send_player(name, bookmarks)
+			elseif fields.text == "lock" then
+				if minetest.is_protected(pos, name) then
+					minetest.chat_send_player(name, "I don't want to lock my self out.")
+				else
+					panel_meta:set_string("locked", "true")
+				end
+			elseif fields.text == "unlock" then
+				panel_meta:set_string("locked", "false")
 			else
 				local place_pos_string = fields.text:split(":")[1]
 				local place_pos = minetest.string_to_pos(place_pos_string)
 				local facedir = tonumber(fields.text:split(":")[2])
 				if place_pos and facedir and facedir >= 0 and facedir <= 3 then
 					if not minetest.is_protected(place_pos, name) and not minetest.is_protected({x = place_pos.x, y = place_pos.y + 1, z = place_pos.z}, name) then
+						local box = panel_meta:get_string("box")
+						if not goodbox(box) then
+							local var = math.random(#rdis_boxes)
+							local boxt = rdis_boxes[var]
+							box = boxt[1]
+							panel_meta:set_string("box", box)
+						end
 						minetest.emerge_area(place_pos, {x = place_pos.x, y = place_pos.y + 1, z = place_pos.z})
-						minetest.after(0.01, materialize, name, pos, place_pos_string, place_pos, facedir)
+						minetest.after(0.01, materialize, name, pos, place_pos_string, place_pos, facedir, box)
 					else
 						minetest.chat_send_player(name, "Could not materialize at "..place_pos_string..". Protection field found.")
 					end
@@ -243,38 +348,6 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 		return false
 	end
 end)
-
-minetest.register_node("rdis:stall", {
-	description = "Honey Bucket",
-	drawtype = "nodebox",
-	tiles = {"default_wood.png"},
-	paramtype = "light",
-	paramtype2 = "facedir",
-	node_box = {
-		type = "fixed",
-		fixed = {
-			{-0.5, -0.5, -0.5, 0.5, -0.4375, 0.5},
-			{-0.5, 1.4375, -0.5, 0.5, 1.5, 0.5},
-			{-0.5, -0.4375, 0.4375, 0.5, 1.4375, 0.5},
-			{-0.5, -0.4375, -0.5, -0.4375, 1.4375, 0.4375},
-			{0.4375, -0.4375, -0.5, 0.5, 1.4375, 0.4375}
-		}
-	},
-	selection_box = {
-		type = "fixed",
-		fixed = {-0.5, -0.5, -0.5, 0.5, 1.5, 0.5}
-	},
-	groups = {not_in_creative_inventory = 1},
-	diggable = false,
-	on_construct = function(pos)
-		minetest.swap_node({x = pos.x, y = pos.y + 1, z = pos.z}, {name = "rdis:stall_ghost"})
-	end,
-	on_destruct = function(pos)
-		minetest.remove_node({x = pos.x, y = pos.y + 1, z = pos.z})
-	end,
-	on_blast = function(pos, intensity)
-	end
-})
 
 minetest.register_node("rdis:stall_ghost", {
 	description = "This is not an easter egg.",
@@ -298,7 +371,7 @@ local globalstep_next = function(v, meta, objs, to_pos)
 	local node = minetest.get_node(v)
 	local face
 	local to_face
-	if node.name == "rdis:stall" then
+	if minetest.get_item_group(node.name, "rdis_box") > 0 then
 		local meta = minetest.get_meta(to_pos)
 		face = node.param2
 		to_face = meta:get_int("face")
@@ -361,15 +434,15 @@ minetest.register_lbm({
 	run_at_every_load = true,
 	action = function(pos)
 		local node = minetest.get_node_or_nil({x = pos.x, y = pos.y - 1, z = pos.z})
-		if node and node.name ~= "rdis:stall" then
+		if node and minetest.get_item_group(node.name, "rdis_box") == 0 then
 			minetest.remove_node(pos)
 		end
 	end
 })
 
 minetest.register_lbm({
-	name = "rdis:index_chameleon",
-	nodenames = {"rdis:stall"},
+	name = "rdis:index_boxes",
+	nodenames = {"group:rdis_box"},
 	run_at_every_load = true,
 	action = function(pos)
 		local meta = minetest.get_meta(pos)
@@ -382,8 +455,7 @@ minetest.register_lbm({
 	end
 })
 
-if (minetest.get_modpath("mesecons_mvps")) then
+if mesecons_mvps_path then
 	mesecon.register_mvps_stopper("rdis:control_panel")
-	mesecon.register_mvps_stopper("rdis:stall")
 	mesecon.register_mvps_stopper("rdis:stall_ghost")
 end
