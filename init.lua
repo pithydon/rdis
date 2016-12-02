@@ -136,6 +136,8 @@ minetest.register_node("rdis:control_panel", {
 			if meta:get_string("locked") ~= "false" and minetest.is_protected(pos, name) then
 				minetest.chat_send_player(name, "Control panel is locked.")
 			else
+				--needed this to test things
+				--minetest.show_formspec(name, "rdis:skins_s_1", "size[3,1.4]"..default.gui_bg..default.gui_bg_img.."image_button[0.9,0;1.1,1.5;"..minetest.formspec_escape("[combine:22x30:-58,-32=rdis_box_honey_bucket.png")..";skin;]")
 				minetest.show_formspec(name, "rdis:set_pos_s_"..pos_string,
 						"background[0,0;0,0;rdis_control_panel_gui_bg.png;true]field[text;x,y,z:facedir    Enter \"help\" without quotes for more info.;]")
 			end
@@ -172,6 +174,12 @@ minetest.register_craft({
 		{"farming:seed_wheat", "farming:seed_wheat", "farming:seed_wheat"}
 	}
 })
+
+local themeformspec = function(name, page)
+	local box = rdis_boxes[page]
+	--uhm why does this do nothing?
+	minetest.show_formspec(name, "rdis:skins_s_"..page, "size[3,1.4]"..default.gui_bg..default.gui_bg_img.."image_button[0.9,0;1.1,1.5;"..minetest.formspec_escape(box[2])..";skin;]")
+end
 
 local materialize = function(name, pos, place_pos_string, place_pos, facedir, box)
 	local old_node = minetest.get_node_or_nil(place_pos)
@@ -247,10 +255,12 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 					minetest.chat_send_player(name, "RDIS command \"lock\", lockes the control panel. \"Needs a protection field to work.\"")
 				elseif fields_text[2] == "unlock" then
 					minetest.chat_send_player(name, "RDIS command \"unlock\", unlockes the control panel.")
+				elseif fields_text[2] == "skin" then
+					minetest.chat_send_player(name, "RDIS command \"skin\", apply a theme to your box.")
 				else
 					minetest.chat_send_player(name, "Enter a position or use a command.\n"..
 							"Position format is \"x,y,z:facedir\" without quotes.\n"..
-							"Available commands are: close open bookmark delete list lock unlock\n"..
+							"Available commands are: close open bookmark delete list lock unlock skin\n"..
 							"Use \"help \"command name\"\" to for more info on commands.")
 				end
 			elseif fields.text == "close" then
@@ -320,6 +330,12 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 				end
 			elseif fields.text == "unlock" then
 				panel_meta:set_string("locked", "false")
+			elseif fields.text == "skin" then
+				if not minetest.is_protected(pos, name) then
+					themeformspec(name, 1)
+				else
+					minetest.chat_send_player(name, "I like it how it is.")
+				end
 			else
 				local place_pos_string = fields.text:split(":")[1]
 				local place_pos = minetest.string_to_pos(place_pos_string)
