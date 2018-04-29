@@ -8,14 +8,14 @@ if file ~= nil then
 	file:close()
 	local list = list_string:split("\n")
 	for _,v in ipairs(list) do
-		local vt = v:split(":")
-		local vn = vt[2]:gsub(" ", "_")
-		local subname = string.lower(vn)
+		local v = v:gsub(" = ", "=")
+		local vt = v:split("=")
+		local subname = string.lower(vt[1]:gsub(" ", "_"))
 
 		minetest.register_node("rdis:box_"..subname, {
-			description = "rdis box: "..vt[2],
+			description = "rdis box: "..vt[1],
 			drawtype = "mesh",
-			tiles = {vt[1]},
+			tiles = {vt[2]},
 			paramtype = "light",
 			paramtype2 = "facedir",
 			mesh = "rdis_box.obj",
@@ -45,7 +45,7 @@ if file ~= nil then
 			end
 		})
 
-		table.insert(rdis_boxes, {"rdis:box_"..subname, "[combine:22x30:-58,-32="..vt[1]})
+		rdis_boxes[subname] = {"rdis:box_"..subname, vt[1], "[combine:22x30:-58,-32="..vt[2]}
 
 		if mesecons_mvps_path then
 			mesecon.register_mvps_stopper("rdis:box_"..subname)
@@ -98,13 +98,28 @@ local contains = function(t, e)
 	return false
 end
 
-local goodbox = function(box)
-	for _,v in ipairs(rdis_boxes) do
+local good_box = function(box)
+	for _,v in pairs(rdis_boxes) do
 		if v[1] == box then
 			return true
 		end
 	end
 	return false
+end
+
+local random_box = function()
+	local i = 0
+	for _,_ in pairs(rdis_boxes) do
+		i = i + 1
+	end
+	local x = math.random(i)
+	i = 0
+	for _,v in pairs(rdis_boxes) do
+		i = i + 1
+		if i == x then
+			return v[1]
+		end
+	end
 end
 
 minetest.register_node("rdis:control_panel", {
@@ -121,12 +136,6 @@ minetest.register_node("rdis:control_panel", {
 		}
 	},
 	groups = {cracky = 1, level = 1},
-	on_construct = function(pos)
-		local meta = minetest.get_meta(pos)
-		local var = math.random(#rdis_boxes)
-		local box = rdis_boxes[var]
-		meta:set_string("box", box[1])
-	end,
 	on_rightclick = function(pos, node, clicker, itemstack, pointed_thing)
 		local name = clicker:get_player_name()
 		local meta = minetest.get_meta(pos)
@@ -136,8 +145,6 @@ minetest.register_node("rdis:control_panel", {
 			if meta:get_string("locked") ~= "false" and minetest.is_protected(pos, name) then
 				minetest.chat_send_player(name, "Control panel is locked.")
 			else
-				--needed this to test things
-				--minetest.show_formspec(name, "rdis:skins_s_1", "size[3,1.4]"..default.gui_bg..default.gui_bg_img.."image_button[0.9,0;1.1,1.5;"..minetest.formspec_escape("[combine:22x30:-58,-32=rdis_box_honey_bucket.png")..";skin;]")
 				minetest.show_formspec(name, "rdis:set_pos_s_"..pos_string,
 						"background[0,0;0,0;rdis_control_panel_gui_bg.png;true]field[text;x,y,z:facedir    Enter \"help\" without quotes for more info.;]")
 			end
@@ -174,12 +181,6 @@ minetest.register_craft({
 		{"farming:seed_wheat", "farming:seed_wheat", "farming:seed_wheat"}
 	}
 })
-
-local themeformspec = function(name, page)
-	local box = rdis_boxes[page]
-	--uhm why does this do nothing?
-	minetest.show_formspec(name, "rdis:skins_s_"..page, "size[3,1.4]"..default.gui_bg..default.gui_bg_img.."image_button[0.9,0;1.1,1.5;"..minetest.formspec_escape(box[2])..";skin;]")
-end
 
 local materialize = function(name, pos, place_pos_string, place_pos, facedir, box)
 	local old_node = minetest.get_node_or_nil(place_pos)
@@ -256,7 +257,7 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 				elseif fields_text[2] == "unlock" then
 					minetest.chat_send_player(name, "RDIS command \"unlock\", unlockes the control panel.")
 				elseif fields_text[2] == "skin" then
-					minetest.chat_send_player(name, "RDIS command \"skin\", apply a theme to your box.")
+					minetest.chat_send_player(name, "RDIS command \"skin\", apply a theme to your box. usage: skin \"skin name\"")
 				else
 					minetest.chat_send_player(name, "Enter a position or use a command.\n"..
 							"Position format is \"x,y,z:facedir\" without quotes.\n"..
@@ -330,9 +331,32 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 				end
 			elseif fields.text == "unlock" then
 				panel_meta:set_string("locked", "false")
-			elseif fields.text == "skin" then
+			elseif fields_text[1] == "skin" then
 				if not minetest.is_protected(pos, name) then
-					themeformspec(name, 1)
+					if not fields_text[2] then
+						minetest.chat_send_player(name, "Available skins are...")
+						minetest.chat_send_player(name, "* none")
+						for _,v in pairs(rdis_boxes) do
+							minetest.chat_send_player(name, "* "..v[2])
+						end
+						return true
+					else
+						local skin = fields_text[2]
+						if skin == "none" then
+							panel_meta:set_string("box", "none")
+							return true
+						elseif fields_text[3] then
+							for i = 3,#fields_text do
+								skin = skin.." "..fields_text[i]
+							end
+						end
+						local box = rdis_boxes[string.lower(skin:gsub(" ", "_"))]
+						if box then
+							panel_meta:set_string("box", box[1])
+						else
+							minetest.chat_send_player(name, "Skin not found")
+						end
+					end
 				else
 					minetest.chat_send_player(name, "I like it how it is.")
 				end
@@ -343,11 +367,8 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 				if place_pos and facedir and facedir >= 0 and facedir <= 3 then
 					if not minetest.is_protected(place_pos, name) and not minetest.is_protected({x = place_pos.x, y = place_pos.y + 1, z = place_pos.z}, name) then
 						local box = panel_meta:get_string("box")
-						if not goodbox(box) then
-							local var = math.random(#rdis_boxes)
-							local boxt = rdis_boxes[var]
-							box = boxt[1]
-							panel_meta:set_string("box", box)
+						if not good_box(box) then
+							box = random_box()
 						end
 						minetest.emerge_area(place_pos, {x = place_pos.x, y = place_pos.y + 1, z = place_pos.z})
 						minetest.after(0.01, materialize, name, pos, place_pos_string, place_pos, facedir, box)
@@ -396,15 +417,14 @@ local globalstep_next = function(v, meta, objs, to_pos)
 		face = meta:get_int("face")
 		to_face = node.param2
 	end
-	local yaw_diff = 0 - ((1.5708 * to_face) - (1.5708 * face)) - 4.7124
+	local yaw_diff = 1.5708 * (to_face - face) + 4.7124
 	for _,v in ipairs(objs) do
 		if v:is_player() then
 			local name = v:get_player_name()
 			if not contains(on_hold, name) then
-				local yaw = v:get_look_yaw()
 				table.insert(on_hold, name)
 				v:setpos(to_pos)
-				v:set_look_yaw(yaw + yaw_diff)
+				v:set_look_yaw(v:get_look_yaw() - yaw_diff)
 				minetest.after(1.3, remove_name, name)
 			end
 		end
