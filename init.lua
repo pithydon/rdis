@@ -287,8 +287,12 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 				local facedir = tonumber(bookmark:split(":")[2])
 				if place_pos and facedir and facedir >= 0 and facedir <= 3 then
 					if not minetest.is_protected(place_pos, name) and not minetest.is_protected({x = place_pos.x, y = place_pos.y + 1, z = place_pos.z}, name) then
+						local box = panel_meta:get_string("box")
+						if not good_box(box) then
+							box = random_box()
+						end
 						minetest.emerge_area(place_pos, {x = place_pos.x, y = place_pos.y + 1, z = place_pos.z})
-						minetest.after(0.01, materialize, name, pos, place_pos_string, place_pos, facedir)
+						minetest.after(0.01, materialize, name, pos, place_pos_string, place_pos, facedir, box)
 					else
 						minetest.chat_send_player(name, "Could not materialize at "..place_pos_string..". Protection field found.")
 					end
