@@ -45,7 +45,7 @@ if file ~= nil then
 			end
 		})
 
-		rdis_boxes[subname] = {"rdis:box_"..subname, vt[1], "[combine:22x30:-58,-32="..vt[2]}
+		rdis_boxes[subname] = {"rdis:box_"..subname, vt[1]}
 
 		if mesecons_mvps_path then
 			mesecon.register_mvps_stopper("rdis:box_"..subname)
@@ -338,8 +338,7 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 			elseif fields_text[1] == "skin" then
 				if not minetest.is_protected(pos, name) then
 					if not fields_text[2] then
-						minetest.chat_send_player(name, "Available skins are...")
-						minetest.chat_send_player(name, "* none")
+						minetest.chat_send_player(name, "Available skins are...\n* none")
 						for _,v in pairs(rdis_boxes) do
 							minetest.chat_send_player(name, "* "..v[2])
 						end

@@ -1,2 +1,3 @@
 Wood = rdis_box_wood.png
 Honey Bucket = rdis_box_honey_bucket.png
+Rune = rdis_box_rune.png
