@@ -1,6 +1,33 @@
 local mesecons_mvps_path = minetest.get_modpath("mesecons_mvps")
-
 local rdis_boxes = {}
+local replaceable = {}
+
+if minetest.setting_getbool("rdis_enable_replaceable_stone") ~= false then
+	replaceable = {
+		"default:stone",
+		"default:cobble",
+		"default:stonebrick",
+		"default:stone_block",
+		"default:mossycobble",
+		"default:desert_stone",
+		"default:desert_cobble",
+		"default:desert_stonebrick",
+		"default:desert_stone_block",
+		"default:sandstone",
+		"default:sandstonebrick",
+		"default:sandstone_block",
+		"default:desert_sandstone",
+		"default:desert_sandstone_brick",
+		"default:desert_sandstone_block",
+		"default:silver_sandstone",
+		"default:silver_sandstone_brick",
+		"default:silver_sandstone_block"
+	}
+end
+
+local replace_func = function(pos, replace)
+	minetest.set_node(pos, {name = replace})
+end
 
 local file = io.open(minetest.get_modpath("rdis").."/rdis_boxes.txt", "r")
 if file ~= nil then
@@ -36,10 +63,20 @@ if file ~= nil then
 			groups = {rdis_box = 1, not_in_creative_inventory = 1},
 			diggable = false,
 			on_construct = function(pos)
-				minetest.swap_node({x = pos.x, y = pos.y + 1, z = pos.z}, {name = "rdis:stall_ghost"})
+				minetest.set_node({x = pos.x, y = pos.y + 1, z = pos.z}, {name = "rdis:stall_ghost"})
 			end,
 			on_destruct = function(pos)
-				minetest.remove_node({x = pos.x, y = pos.y + 1, z = pos.z})
+				local meta = minetest.get_meta(pos)
+				local replace = meta:get_string("replace")
+				local replace_top = meta:get_string("replace_top")
+				if replace ~= "" then
+					minetest.after(0.01, replace_func, pos, replace)
+				end
+				if replace_top == "" then
+					minetest.remove_node({x = pos.x, y = pos.y + 1, z = pos.z})
+				else
+					minetest.set_node({x = pos.x, y = pos.y + 1, z = pos.z}, {name = replace_top})
+				end
 			end,
 			on_blast = function(pos, intensity)
 			end
@@ -167,7 +204,8 @@ minetest.register_node("rdis:control_panel", {
 		end
 		if to_pos then
 			remove_tp(to_pos)
-			minetest.remove_node(to_pos)
+			minetest.emerge_area(to_pos, to_pos)
+			minetest.after(0.01, minetest.remove_node, to_pos)
 			minetest.log("action", "destruction of \"rdis:control_panel\" at "..minetest.pos_to_string(pos).." dematerialized an rdis box at "..to_pos_string)
 		end
 	end
@@ -183,12 +221,21 @@ minetest.register_craft({
 })
 
 local materialize = function(name, pos, place_pos_string, place_pos, facedir, box)
+	local under_pos = {x = place_pos.x, y = place_pos.y + 1, z = place_pos.z}
 	local old_node = minetest.get_node_or_nil(place_pos)
-	local under_node = minetest.get_node_or_nil({x = place_pos.x, y = place_pos.y + 1, z = place_pos.z})
+	local under_node = minetest.get_node_or_nil(under_pos)
 	if old_node and under_node then
 		local old_node_def = minetest.registered_nodes[old_node.name]
 		local under_node_def = minetest.registered_nodes[under_node.name]
-		if old_node_def.buildable_to and under_node_def.buildable_to then
+		local replace_old
+		local replace_under
+		if contains(replaceable, old_node.name) then
+			replace_old = old_node.name
+		end
+		if contains(replaceable, under_node.name) then
+			replace_under = under_node.name
+		end
+		if (replace_old or old_node_def.buildable_to) and (replace_under or under_node_def.buildable_to) then
 			local panel_meta = minetest.get_meta(pos)
 			local door_string = panel_meta:get_string("door")
 			local door = minetest.string_to_pos(door_string)
@@ -197,7 +244,8 @@ local materialize = function(name, pos, place_pos_string, place_pos, facedir, bo
 			local old_to_pos = minetest.string_to_pos(old_to_pos_string)
 			if old_to_pos then
 				remove_tp(old_to_pos)
-				minetest.remove_node(old_to_pos)
+				minetest.emerge_area(old_to_pos, old_to_pos)
+				minetest.after(0.01, minetest.remove_node, old_to_pos)
 				minetest.log("action", name.." dematerialized an rdis box at "..old_to_pos_string)
 			end
 			panel_meta:set_string("to_pos", place_pos_string)
@@ -205,6 +253,12 @@ local materialize = function(name, pos, place_pos_string, place_pos, facedir, bo
 			minetest.set_node(place_pos, {name = box, param2 = facedir})
 			local meta = minetest.get_meta(place_pos)
 			meta:set_string("to_pos", door_string)
+			if replace_old then
+				meta:set_string("replace", replace_old)
+			end
+			if replace_under then
+				meta:set_string("replace_top", replace_under)
+			end
 			add_tp(place_pos)
 			minetest.log("action", name.." materialized an rdis box at "..place_pos_string)
 		else
@@ -273,7 +327,8 @@ minetest.register_on_player_receive_fields(function(player, formname, fields)
 					panel_meta:set_string("to_pos", "")
 					door_meta:set_string("to_pos", "")
 					remove_tp(old_to_pos)
-					minetest.remove_node(old_to_pos)
+					minetest.emerge_area(old_to_pos, old_to_pos)
+					minetest.after(0.01, minetest.remove_node, old_to_pos)
 					minetest.log("action", name.." dematerialized an rdis box at "..old_to_pos_string)
 				end
 			elseif fields_text[1] == "open" then

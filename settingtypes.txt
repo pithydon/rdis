@@ -1,0 +1,2 @@
+# Allow RDIS to replace stone.
+rdis_enable_replaceable_stone (Replaceable Stone) bool true
